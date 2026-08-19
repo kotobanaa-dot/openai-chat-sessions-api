@@ -320,7 +320,12 @@ Deliberate scope decisions, not oversights:
 3. **No streaming.** Replies are returned in one response. Streaming would also
    require `stream_options={"include_usage": True}` to keep usage reporting.
 4. **No authentication or multi-tenancy.** `X-API-Key` is a single shared secret
-   for guarding a public demo, not per-user auth.
+   for guarding a public deployment, not per-user auth: anyone holding the key
+   can read and continue any session. Sessions carry no owner, so adding
+   per-user access later means a schema change plus an authorisation check on
+   every session route. Note also that an empty `API_KEY` disables the guard
+   entirely - convenient locally, which is why the service logs a warning at
+   startup when that happens outside a local environment.
 5. **A failed exchange leaves the user's message unanswered rather than marked.**
    The message is committed before the provider call, so it survives a failure -
    but there is no `failed` placeholder row for the reply that never arrived, and

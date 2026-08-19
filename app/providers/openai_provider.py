@@ -57,7 +57,13 @@ class OpenAIProvider:
                 "The model provider rejected the API credentials."
             ) from exc
         except (BadRequestError, NotFoundError) as exc:
-            logger.error("openai rejected the request: %s", exc)
+            # Only the status code is logged: the SDK's exception text can echo
+            # the request body back, which would put user messages in the logs.
+            logger.error(
+                "openai rejected the request: %s (status %s)",
+                type(exc).__name__,
+                getattr(exc, "status_code", "unknown"),
+            )
             raise UpstreamRejectedError(
                 "The model provider rejected the request (check the model name)."
             ) from exc

@@ -29,6 +29,16 @@ app = FastAPI(
 
 app.include_router(sessions.router)
 
+if not settings.auth_enabled and settings.app_env != "local":
+    # Auth is off whenever API_KEY is empty, which is convenient locally and
+    # dangerous anywhere else: a lost variable would silently open a service
+    # that spends money on every request. Say so loudly at startup.
+    logger.warning(
+        "API_KEY is empty in env '%s' - the API is publicly callable and every "
+        "request bills the configured OpenAI account.",
+        settings.app_env,
+    )
+
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
