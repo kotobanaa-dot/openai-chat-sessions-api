@@ -278,6 +278,19 @@ const api = {
   key: localStorage.getItem('apiKey') || '',
 };
 
+// Ключ можна передати посиланням: /?key=... - так стенд відкривається одним
+// кліком. Значення одразу прибирається з адресного рядка, щоб не лишалось на
+// виду і не потрапляло у вкладки та закладки.
+const params = new URLSearchParams(location.search);
+const keyFromUrl = params.get('key');
+if (keyFromUrl && keyFromUrl.trim()) {
+  api.key = keyFromUrl.trim();
+  localStorage.setItem('apiKey', api.key);
+  params.delete('key');
+  const query = params.toString();
+  history.replaceState(null, '', location.pathname + (query ? '?' + query : ''));
+}
+
 const el = (id) => document.getElementById(id);
 const thread = el('thread');
 const notice = el('notice');

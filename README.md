@@ -16,9 +16,12 @@ A running instance is available at **https://pbc.midmoon.duckdns.org/** - a chat
 UI at `/` and Swagger at `/docs`, no setup required.
 
 The demo is behind a shared key: send `X-API-Key: <key provided separately>`
-with every `/api/v1` call, or paste it into the field in the UI. Replies there are
-capped at 400 tokens and sessions at 30 messages, which keeps the demo's spend
-bounded; a local run has no such caps.
+with every `/api/v1` call. The UI accepts the same key in its field, or as
+`/?key=<key>` in the address - it is stored locally and stripped from the URL on
+load, so a shared link opens the chat in one click.
+
+Replies on the demo are capped at 400 tokens and sessions at 30 messages, which
+keeps its spend bounded; a local run has no such caps.
 
 ---
 
