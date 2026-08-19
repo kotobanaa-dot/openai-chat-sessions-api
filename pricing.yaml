@@ -1,0 +1,38 @@
+# Model pricing, USD per 1,000,000 tokens.
+#
+# Source: https://platform.openai.com/docs/pricing (checked 2026-08-19).
+# Adding a model means adding an entry here - no code change is required.
+#
+# cached_input applies to the part of the prompt served from OpenAI's prompt
+# cache. It is reported by the API as usage.prompt_tokens_details.cached_tokens
+# and is billed at a lower rate, so it is charged separately instead of being
+# lumped into the regular input price.
+
+currency: USD
+checked_at: "2026-08-19"
+
+models:
+  gpt-4o-mini:
+    input: 0.15
+    cached_input: 0.075
+    output: 0.60
+
+  gpt-4.1-mini:
+    input: 0.40
+    cached_input: 0.10
+    output: 1.60
+
+  gpt-4.1-nano:
+    input: 0.10
+    cached_input: 0.025
+    output: 0.40
+
+  gpt-5-mini:
+    input: 0.25
+    cached_input: 0.025
+    output: 2.00
+
+  gpt-5-nano:
+    input: 0.05
+    cached_input: 0.005
+    output: 0.40
