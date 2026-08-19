@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat Sessions API - демо</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e4e7ec;
+    --text: #101828;
+    --muted: #667085;
+    --accent: #2563eb;
+    --accent-soft: #eff4ff;
+    --danger: #b42318;
+    --danger-soft: #fef3f2;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 40px; }
+
+  header { margin-bottom: 20px; }
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle { color: var(--muted); font-size: 13px; }
+  .subtitle code { font-family: var(--mono); font-size: 12px; }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+
+  .metric .label {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .metric .value {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .thread {
+    min-height: 260px;
+    max-height: 52vh;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  .empty {
+    color: var(--muted);
+    font-size: 14px;
+    text-align: center;
+    padding: 60px 20px;
+  }
+
+  .msg {
+    display: grid;
+    grid-template-columns: 118px 1fr;
+    gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .msg:last-child { border-bottom: none; }
+
+  .role {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    padding-top: 3px;
+  }
+  .msg.user .role { color: var(--accent); }
+
+  .content { white-space: pre-wrap; word-wrap: break-word; }
+
+  .usage {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .composer {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  textarea {
+    flex: 1;
+    resize: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font: inherit;
+    color: inherit;
+    min-height: 42px;
+    max-height: 140px;
+  }
+  textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+  button {
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0 18px;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    height: 42px;
+    align-self: flex-end;
+  }
+  button:disabled { opacity: 0.55; cursor: default; }
+  button.secondary {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+    height: 32px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .bar input {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 10px;
+    height: 32px;
+    font: inherit;
+    font-size: 13px;
+    width: 230px;
+    background: var(--surface);
+    color: inherit;
+  }
+
+  .notice {
+    display: none;
+    background: var(--danger-soft);
+    border: 1px solid #fda29b;
+    color: var(--danger);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 13.5px;
+    margin-bottom: 14px;
+  }
+  .notice.show { display: block; }
+  .notice code { font-family: var(--mono); font-size: 12px; }
+
+  /* Захищений стенд - очікуваний стан, а не помилка: тон має бути спокійний. */
+  .notice.info {
+    background: var(--accent-soft);
+    border-color: #b2ccff;
+    color: #1a3a8f;
+  }
+
+  .thinking { color: var(--muted); font-style: italic; }
+
+  footer {
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  footer a { color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .metrics { grid-template-columns: 1fr; }
+    .msg { grid-template-columns: 1fr; gap: 4px; }
+    .bar { flex-direction: column; align-items: stretch; }
+    .bar input { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Chat Sessions API</h1>
+    <div class="subtitle">
+      сесія <code id="session-id">-</code> &middot; модель <code id="model">-</code>
+    </div>
+  </header>
+
+  <div class="notice" id="notice"></div>
+
+  <div class="bar">
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="secondary" id="new-session">Нова сесія</button>
+      <a class="secondary" href="/docs" style="text-decoration:none;">
+        <button class="secondary" type="button">Документація API</button>
+      </a>
+    </div>
+    <input id="api-key" type="password" placeholder="X-API-Key - ключ доступу" autocomplete="off">
+  </div>
+
+  <div class="metrics">
+    <div class="metric">
+      <div class="label">Усього токенів</div>
+      <div class="value" id="m-tokens">0</div>
+    </div>
+    <div class="metric">
+      <div class="label">Накопичена вартість</div>
+      <div class="value" id="m-cost">$0.00000000</div>
+    </div>
+    <div class="metric">
+      <div class="label">Повідомлень</div>
+      <div class="value" id="m-messages">0</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="thread" id="thread">
+      <div class="empty">Повідомлень ще немає. Напишіть щось, щоб почати розмову.</div>
+    </div>
+    <div class="composer">
+      <textarea id="input" placeholder="Введіть повідомлення, Enter - надіслати" rows="1"></textarea>
+      <button id="send">Надіслати</button>
+    </div>
+  </div>
+
+  <footer>
+    Кожна відповідь формується з історії цієї сесії, збереженої в базі даних.
+    Токени та вартість беруться з відповіді OpenAI і зберігаються для кожного повідомлення.
+  </footer>
+</div>
+
+<script>
+const api = {
+  sessionId: localStorage.getItem('sessionId') || null,
+  key: localStorage.getItem('apiKey') || '',
+};
+
+const el = (id) => document.getElementById(id);
+const thread = el('thread');
+const notice = el('notice');
+
+const ROLE_LABEL = { user: 'КОРИСТУВАЧ', assistant: 'АСИСТЕНТ', system: 'СИСТЕМА' };
+
+el('api-key').value = api.key;
+
+function applyKey(value) {
+  api.key = value.trim();
+  localStorage.setItem('apiKey', api.key);
+  // Повторюємо одразу: змушувати шукати кнопку перезавантаження після
+  // вставки ключа - глухий кут, який читається як зламана сторінка.
+  if (api.key) loadSession();
+}
+
+el('api-key').addEventListener('change', (e) => applyKey(e.target.value));
+el('api-key').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyKey(e.target.value);
+});
+
+function headers() {
+  const h = { 'Content-Type': 'application/json' };
+  if (api.key) h['X-API-Key'] = api.key;
+  return h;
+}
+
+function showError(message, code) {
+  if (code === 'unauthorized') {
+    // Не збій - стенд просто закритий ключем.
+    notice.className = 'notice show info';
+    notice.innerHTML =
+      'Демо-стенд захищено ключем. Вставте ключ доступу в поле ' +
+      '<strong>X-API-Key</strong> вгорі, щоб почати спілкування.';
+    el('api-key').focus();
+    return;
+  }
+  notice.className = 'notice show';
+  notice.innerHTML = code
+    ? `${escapeHtml(message)} <code>${escapeHtml(code)}</code>`
+    : escapeHtml(message);
+}
+function clearError() { notice.className = 'notice'; }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+async function request(path, options = {}) {
+  const res = await fetch(path, { ...options, headers: headers() });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = body && body.error ? body.error : { message: `Помилка HTTP ${res.status}`, code: '' };
+    const e = new Error(err.message);
+    e.code = err.code;
+    throw e;
+  }
+  return body;
+}
+
+function money(v) {
+  return '$' + Number(v).toFixed(8);
+}
+
+function renderMetrics(session) {
+  el('m-tokens').textContent = session.total_tokens ?? 0;
+  el('m-cost').textContent = money(session.total_cost ?? 0);
+  el('m-messages').textContent = (session.messages || []).length;
+  el('session-id').textContent = session.id ? session.id.slice(0, 8) + '…' : '-';
+  el('model').textContent = session.model || '-';
+}
+
+function messageNode(role, content, usageLine) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML =
+    `<div class="role">${ROLE_LABEL[role] || role.toUpperCase()}</div>` +
+    `<div><div class="content">${escapeHtml(content)}</div>` +
+    (usageLine ? `<div class="usage">${escapeHtml(usageLine)}</div>` : '') +
+    `</div>`;
+  return div;
+}
+
+function renderThread(messages, usageByMessage) {
+  thread.innerHTML = '';
+  if (!messages.length) {
+    thread.innerHTML = '<div class="empty">Повідомлень ще немає. Напишіть щось, щоб почати розмову.</div>';
+    return;
+  }
+  for (const m of messages) {
+    thread.appendChild(messageNode(m.role, m.content, usageByMessage[m.id] || ''));
+  }
+  thread.scrollTop = thread.scrollHeight;
+}
+
+const usageByMessage = {};
+
+async function loadSession() {
+  if (!api.sessionId) return newSession();
+  try {
+    const session = await request(`/api/v1/sessions/${api.sessionId}`);
+    renderMetrics(session);
+    renderThread(session.messages, usageByMessage);
+    clearError();
+  } catch (e) {
+    if (e.code === 'session_not_found') return newSession();
+    showError(e.message, e.code);
+  }
+}
+
+async function newSession() {
+  try {
+    const session = await request('/api/v1/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Демо-сесія' }),
+    });
+    api.sessionId = session.id;
+    localStorage.setItem('sessionId', session.id);
+    session.messages = [];
+    renderMetrics(session);
+    renderThread([], usageByMessage);
+    clearError();
+  } catch (e) {
+    showError(e.message, e.code);
+  }
+}
+
+async function send() {
+  const input = el('input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const button = el('send');
+  button.disabled = true;
+  input.value = '';
+  clearError();
+
+  // Оптимістичний показ повідомлення плюс явний стан очікування: виклик моделі
+  // триває секунди, і мовчазний інтерфейс читається як зламаний.
+  const emptyState = thread.querySelector('.empty');
+  if (emptyState) thread.innerHTML = '';
+  thread.appendChild(messageNode('user', text, ''));
+  const pending = messageNode('assistant', 'думаю…', '');
+  pending.querySelector('.content').classList.add('thinking');
+  thread.appendChild(pending);
+  thread.scrollTop = thread.scrollHeight;
+
+  try {
+    const result = await request(`/api/v1/sessions/${api.sessionId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content: text }),
+    });
+    usageByMessage[result.assistant_message.id] =
+      `вхід ${result.usage.prompt_tokens} · вихід ${result.usage.completion_tokens}` +
+      (result.usage.cached_tokens ? ` · кеш ${result.usage.cached_tokens}` : '') +
+      ` · ${money(result.cost)} · контекст ${result.context_messages} повідом.`;
+    await loadSession();
+  } catch (e) {
+    pending.remove();
+    showError(e.message, e.code);
+  } finally {
+    button.disabled = false;
+    input.focus();
+  }
+}
+
+el('send').addEventListener('click', send);
+el('new-session').addEventListener('click', () => {
+  for (const k of Object.keys(usageByMessage)) delete usageByMessage[k];
+  newSession();
+});
+el('input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+loadSession();
+</script>
+</body>
+</html>
