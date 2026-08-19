@@ -1,0 +1,143 @@
+{
+  "info": {
+    "name": "Chat Sessions API",
+    "description": "Chat sessions backed by OpenAI, with history, token usage and accumulated cost. Run the requests in order - creating a session stores its id into the collection variable used by the rest.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base", "value": "http://localhost:8000" },
+    { "key": "apiKey", "value": "" },
+    { "key": "sessionId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base}}/health", "host": ["{{base}}"], "path": ["health"] }
+      }
+    },
+    {
+      "name": "2. List models and tariffs",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }],
+        "url": {
+          "raw": "{{base}}/api/v1/models",
+          "host": ["{{base}}"],
+          "path": ["api", "v1", "models"]
+        }
+      }
+    },
+    {
+      "name": "3. Create session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('sessionId', body.id);",
+              "pm.test('session created', () => pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-API-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Demo session\",\n  \"system_prompt\": \"Answer in one short sentence.\"\n}"
+        },
+        "url": {
+          "raw": "{{base}}/api/v1/sessions",
+          "host": ["{{base}}"],
+          "path": ["api", "v1", "sessions"]
+        }
+      }
+    },
+    {
+      "name": "4. Send first message",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-API-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"content\": \"My name is Oleh and my favourite number is 27.\"\n}"
+        },
+        "url": {
+          "raw": "{{base}}/api/v1/sessions/{{sessionId}}/messages",
+          "host": ["{{base}}"],
+          "path": ["api", "v1", "sessions", "{{sessionId}}", "messages"]
+        }
+      }
+    },
+    {
+      "name": "5. Follow-up using stored history",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-API-Key", "value": "{{apiKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"content\": \"What is my name and my favourite number?\"\n}"
+        },
+        "url": {
+          "raw": "{{base}}/api/v1/sessions/{{sessionId}}/messages",
+          "host": ["{{base}}"],
+          "path": ["api", "v1", "sessions", "{{sessionId}}", "messages"]
+        }
+      }
+    },
+    {
+      "name": "6. Session with history and accumulated cost",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }],
+        "url": {
+          "raw": "{{base}}/api/v1/sessions/{{sessionId}}",
+          "host": ["{{base}}"],
+          "path": ["api", "v1", "sessions", "{{sessionId}}"]
+        }
+      }
+    },
+    {
+      "name": "7. Error - unknown session",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }],
+        "url": {
+          "raw": "{{base}}/api/v1/sessions/does-not-exist",
+          "host": ["{{base}}"],
+          "path": ["api", "v1", "sessions", "does-not-exist"]
+        }
+      }
+    },
+    {
+      "name": "8. Error - empty message",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-API-Key", "value": "{{apiKey}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"content\": \"   \"\n}" },
+        "url": {
+          "raw": "{{base}}/api/v1/sessions/{{sessionId}}/messages",
+          "host": ["{{base}}"],
+          "path": ["api", "v1", "sessions", "{{sessionId}}", "messages"]
+        }
+      }
+    }
+  ]
+}

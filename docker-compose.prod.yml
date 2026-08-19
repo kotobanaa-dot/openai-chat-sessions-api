@@ -1,0 +1,41 @@
+# Deployment compose for the public demo stand.
+#
+# Differences from docker-compose.yml (the local setup):
+#   - the API is bound to 127.0.0.1 only; TLS and the public port are handled
+#     by the host's Caddy reverse proxy
+#   - Postgres publishes no port at all
+#   - containers restart unless explicitly stopped
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chat}
+      POSTGRES_DB: chat
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chat -d chat"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://chat:${POSTGRES_PASSWORD:-chat}@db:5432/chat
+    ports:
+      - "127.0.0.1:8012:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

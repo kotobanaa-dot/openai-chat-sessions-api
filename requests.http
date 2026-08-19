@@ -1,0 +1,61 @@
+# Example requests. Works with the VS Code REST Client extension and the
+# JetBrains HTTP client. Run them top to bottom - each step reuses the id
+# created by the previous one.
+
+@base = http://localhost:8000
+# Only needed when API_KEY is set in .env (public deployments).
+@apiKey =
+
+### 1. Health
+GET {{base}}/health
+
+### 2. Models this service can price
+GET {{base}}/api/v1/models
+
+### 3. Create a session
+# @name createSession
+POST {{base}}/api/v1/sessions
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "title": "Demo session",
+  "system_prompt": "Answer in one short sentence."
+}
+
+### 4. Send the first message
+@sessionId = {{createSession.response.body.id}}
+
+POST {{base}}/api/v1/sessions/{{sessionId}}/messages
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "content": "My name is Oleh and my favourite number is 27."
+}
+
+### 5. Follow-up that only the stored history can answer
+POST {{base}}/api/v1/sessions/{{sessionId}}/messages
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "content": "What is my name and my favourite number?"
+}
+
+### 6. Full history plus accumulated cost
+GET {{base}}/api/v1/sessions/{{sessionId}}
+X-API-Key: {{apiKey}}
+
+### 7. Error case - unknown session
+GET {{base}}/api/v1/sessions/does-not-exist
+X-API-Key: {{apiKey}}
+
+### 8. Error case - empty message
+POST {{base}}/api/v1/sessions/{{sessionId}}/messages
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "content": "   "
+}
