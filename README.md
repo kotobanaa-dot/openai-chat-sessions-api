@@ -63,7 +63,7 @@ uvicorn app.main:app --reload
 docker compose exec api pytest -q
 ```
 
-19 tests, none of which call OpenAI - the provider is faked, so the suite runs
+20 tests, none of which call OpenAI - the provider is faked, so the suite runs
 offline and for free.
 
 ---

@@ -9,7 +9,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.deps import get_chat_service
+from app.api.deps import get_chat_service, require_api_key
 from app.core.config import get_settings
 from app.core.errors import UpstreamUnavailableError
 from app.db.base import Base
@@ -65,6 +65,10 @@ async def client(tmp_path):
                 raise
 
     app.dependency_overrides[get_chat_service] = override_chat_service
+    # The guard is environment-driven (API_KEY). Overriding it keeps the suite
+    # deterministic: these tests cover behaviour, and running them against a
+    # deployment-shaped .env must not turn every request into a 401.
+    app.dependency_overrides[require_api_key] = lambda: None
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         c.provider = provider
@@ -135,6 +139,26 @@ async def test_unsupported_model_is_rejected_before_any_call(client: AsyncClient
     response = await client.post("/api/v1/sessions", json={"model": "no-such-model"})
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
+async def test_api_key_guard_blocks_and_admits(client: AsyncClient) -> None:
+    """The shared-secret guard itself, exercised without the override."""
+    settings = get_settings()
+    app.dependency_overrides.pop(require_api_key, None)
+    original = settings.api_key
+    settings.api_key = "secret-test-key"
+    try:
+        assert (await client.get("/api/v1/models")).status_code == 401
+        assert (
+            await client.get("/api/v1/models", headers={"X-API-Key": "wrong"})
+        ).status_code == 401
+        assert (
+            await client.get("/api/v1/models", headers={"X-API-Key": "secret-test-key"})
+        ).status_code == 200
+    finally:
+        settings.api_key = original
+        app.dependency_overrides[require_api_key] = lambda: None
 
 
 @pytest.mark.asyncio
