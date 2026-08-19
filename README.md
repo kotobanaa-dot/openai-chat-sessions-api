@@ -17,8 +17,14 @@ UI at `/` and Swagger at `/docs`, no setup required.
 
 The demo is behind a shared key: send `X-API-Key: <key provided separately>`
 with every `/api/v1` call. The UI accepts the same key in its field, or as
-`/?key=<key>` in the address - it is stored locally and stripped from the URL on
-load, so a shared link opens the chat in one click.
+`/#key=<key>` in the address, so a shared link opens the chat in one click.
+
+The fragment form is deliberate: browsers never send the part after `#` to the
+server, so the key stays out of access logs. A `?key=` query parameter also
+works but is visible to the server, so prefer the fragment. Either way the value
+is stored locally and stripped from the address bar on load. This trades some
+secrecy for convenience and suits a throwaway demo key with a spending cap - not
+a real credential.
 
 Replies on the demo are capped at 400 tokens and sessions at 30 messages, which
 keeps its spend bounded; a local run has no such caps.

@@ -278,17 +278,28 @@ const api = {
   key: localStorage.getItem('apiKey') || '',
 };
 
-// Ключ можна передати посиланням: /?key=... - так стенд відкривається одним
-// кліком. Значення одразу прибирається з адресного рядка, щоб не лишалось на
-// виду і не потрапляло у вкладки та закладки.
-const params = new URLSearchParams(location.search);
-const keyFromUrl = params.get('key');
-if (keyFromUrl && keyFromUrl.trim()) {
-  api.key = keyFromUrl.trim();
+// Ключ можна передати посиланням, щоб стенд відкривався одним кліком.
+// Основна форма - фрагмент (/#key=...): браузер не надсилає фрагмент на сервер,
+// тому ключ не потрапляє в журнали доступу. Форма ?key=... теж приймається для
+// сумісності, але вона видима серверу.
+// У будь-якому разі значення одразу прибирається з адресного рядка, щоб не
+// лишалось на виду і не осідало у вкладках та закладках.
+const query = new URLSearchParams(location.search);
+const fragment = new URLSearchParams(location.hash.replace(/^#/, ''));
+const keyFromUrl = (fragment.get('key') || query.get('key') || '').trim();
+
+if (keyFromUrl) {
+  api.key = keyFromUrl;
   localStorage.setItem('apiKey', api.key);
-  params.delete('key');
-  const query = params.toString();
-  history.replaceState(null, '', location.pathname + (query ? '?' + query : ''));
+  query.delete('key');
+  fragment.delete('key');
+  const search = query.toString();
+  const hash = fragment.toString();
+  history.replaceState(
+    null,
+    '',
+    location.pathname + (search ? '?' + search : '') + (hash ? '#' + hash : '')
+  );
 }
 
 const el = (id) => document.getElementById(id);
