@@ -9,6 +9,7 @@ and made the charge look like a successful exchange.
 import pytest
 from httpx import AsyncClient
 
+from app.core.config import get_settings
 from app.services.pricing import get_pricing_service
 
 
@@ -61,7 +62,9 @@ async def test_empty_reply_does_not_pollute_the_next_context(client: AsyncClient
 @pytest.mark.asyncio
 async def test_reasoning_models_get_a_larger_output_budget(client: AsyncClient) -> None:
     """The cap is a property of the model, not a single global number."""
-    settings_cap = 512  # the service-wide default
+    # Read the configured cap rather than hardcoding it: a deployment sets its
+    # own value, and the assertion is about the relationship, not the number.
+    settings_cap = get_settings().openai_max_output_tokens
     sid = (await client.post("/api/v1/sessions", json={"model": "gpt-4o-mini"})).json()["id"]
 
     await client.post(f"/api/v1/sessions/{sid}/messages", json={"content": "a"})
