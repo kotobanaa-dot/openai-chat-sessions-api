@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Витрати - Chat Sessions API</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><path d='M8 12h16M8 17h11' stroke='white' stroke-width='2.5' stroke-linecap='round'/></svg>">
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e4e7ec;
+    --text: #101828;
+    --muted: #667085;
+    --accent: #2563eb;
+    --accent-soft: #eff4ff;
+    --danger: #b42318;
+    --danger-soft: #fef3f2;
+    --warn: #b54708;
+    --warn-soft: #fffaeb;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 40px; }
+
+  header { margin-bottom: 20px; }
+
+  h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .subtitle { color: var(--muted); font-size: 13px; }
+
+  .bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .button-link {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  input[type="password"] {
+    height: 32px;
+    min-width: 220px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+
+  .metric .label {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .metric .value {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric .sub {
+    margin-top: 4px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .panel > h2 {
+    margin: 0;
+    padding: 14px 16px 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .panel > .hint {
+    padding: 4px 16px 12px;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  /* Таблиця ширша за екран телефона - хай гортається сама, а не тягне
+     за собою всю сторінку. */
+  .table-scroll { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+  th, td {
+    padding: 9px 16px;
+    text-align: right;
+    white-space: nowrap;
+    border-top: 1px solid var(--border);
+  }
+
+  th {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  th:first-child, td:first-child { text-align: left; }
+
+  td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td.model-name { font-weight: 500; }
+
+  /* Найдорожча модель у перерахунку на корисний текст. Підсвічуємо, бо саме
+     заради цього порівняння сторінка й існує. */
+  tr.costly td { background: var(--danger-soft); }
+  tr.costly td.ratio { color: var(--danger); font-weight: 600; }
+  tr.cheapest td.ratio { color: var(--muted); }
+
+  .chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding: 16px; }
+
+  .chart .day { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+  /* Тихий день - усе одно день з витратами: стовпчик не має зникати
+     в лінію, інакше графік читається як порожній. */
+  .chart .bar-fill { background: var(--accent); border-radius: 3px 3px 0 0; min-height: 6px; }
+  .chart .day-label {
+    margin-top: 6px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .callout {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 16px;
+    border: 1px solid transparent;
+  }
+
+  .callout.warn { background: var(--warn-soft); border-color: #fedf89; color: var(--warn); }
+  .callout.info { background: var(--accent-soft); border-color: #b2ccff; color: #175cd3; }
+  .callout.error { background: var(--danger-soft); border-color: #fecdca; color: var(--danger); }
+  .callout[hidden] { display: none; }
+  .callout code { font-family: var(--mono); font-size: 12px; }
+
+  .empty { padding: 16px; color: var(--muted); font-size: 13px; }
+
+  footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
+
+  @media (max-width: 640px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .bar input[type="password"] { width: 100%; }
+
+    /* На телефоні в рядок влазить чотири колонки. Лишаємо ті, заради яких
+       таблиця й існує - ціну корисного тексту і різницю між моделями;
+       допоміжні числа ховаємо, бо інакше головне їде за край екрана. */
+    th.supporting, td.supporting { display: none; }
+    /* Слово-пояснення поруч із кратністю з'їдає останню колонку. Саме число
+       лишається - воно й несе зміст. */
+    .supporting-word { display: none; }
+    th, td { padding: 9px 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Витрати</h1>
+    <div class="subtitle">
+      Скільки коштувала робота сервісу і яка модель віддає текст найдешевше
+    </div>
+  </header>
+
+  <div class="bar">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <a class="button-link" href="/">&larr; До чату</a>
+      <a class="button-link" href="/docs">Документація API</a>
+    </div>
+    <input id="api-key" type="password" placeholder="X-API-Key - ключ доступу" autocomplete="off">
+  </div>
+
+  <div class="callout info" id="notice" hidden></div>
+
+  <div class="metrics">
+    <div class="metric">
+      <div class="label">Сесій</div>
+      <div class="value" id="m-sessions">-</div>
+    </div>
+    <div class="metric">
+      <div class="label">Відповідей</div>
+      <div class="value" id="m-replies">-</div>
+    </div>
+    <div class="metric">
+      <div class="label">Токенів</div>
+      <div class="value" id="m-tokens">-</div>
+      <div class="sub" id="m-cached">з кешу 0</div>
+    </div>
+    <div class="metric">
+      <div class="label">Витрачено</div>
+      <div class="value" id="m-cost">-</div>
+      <div class="sub">USD, за весь час</div>
+    </div>
+  </div>
+
+  <div class="callout warn" id="failed-callout" hidden></div>
+
+  <div class="panel">
+    <h2>Реальна ціна відповіді</h2>
+    <div class="hint">
+      Тариф беруть за токени, а читає людина символи. Модель, що довго
+      «міркує» перед першим видимим словом, витрачає токени виводу на текст,
+      який ніхто не побачить - тому дешевший тариф не означає дешевшу
+      відповідь. Остання колонка показує це прямо.
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Модель</th>
+            <th>Відповідей</th>
+            <th class="supporting">Токенів виводу<br>у середньому</th>
+            <th class="supporting">Ціна відповіді<br>у середньому</th>
+            <th class="supporting">Разом</th>
+            <th>Ціна 1000<br>символів</th>
+            <th>Різниця</th>
+          </tr>
+        </thead>
+        <tbody id="model-rows"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="models-empty" hidden>Ще жодної відповіді не оплачено.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Витрати по днях</h2>
+    <div class="hint">Останні два тижні, USD за день.</div>
+    <div class="chart" id="chart"></div>
+    <div class="empty" id="chart-empty" hidden>Немає даних за цей період.</div>
+  </div>
+
+  <footer>
+    Усі числа рахуються на льоту з тих самих записів usage, які сервіс пише на
+    кожну відповідь. Архівовані покоління теж враховані: reset очищає контекст,
+    а не рахунок.
+  </footer>
+</div>
+
+<script>
+// Ключ той самий, що й на чаті: сторінки живуть в одному origin, тож значення
+// з localStorage підхоплюється саме собою. Форму /stats#key=... лишаємо для
+// прямого заходу за посиланням - фрагмент не потрапляє в журнали сервера.
+const api = { key: localStorage.getItem('apiKey') || '' };
+
+const fragment = new URLSearchParams(location.hash.replace(/^#/, ''));
+const query = new URLSearchParams(location.search);
+const keyFromUrl = (fragment.get('key') || query.get('key') || '').trim();
+
+if (keyFromUrl) {
+  api.key = keyFromUrl;
+  localStorage.setItem('apiKey', api.key);
+  history.replaceState(null, '', location.pathname);
+}
+
+const el = (id) => document.getElementById(id);
+const notice = el('notice');
+
+el('api-key').value = api.key;
+el('api-key').addEventListener('change', (e) => {
+  api.key = e.target.value.trim();
+  localStorage.setItem('apiKey', api.key);
+  if (api.key) load();
+});
+
+function showNotice(text, kind) {
+  notice.textContent = text;
+  notice.className = 'callout ' + (kind || 'info');
+  notice.hidden = false;
+}
+
+const nf = new Intl.NumberFormat('uk-UA');
+
+// Суми тут - тисячні долара й менше. Фіксовані вісім знаків читати неможливо,
+// два знаки перетворюють усе на $0.00, тому кількість знаків залежить від
+// самої величини. Повне значення лишається в підказці.
+function money(value) {
+  const n = Number(value);
+  if (!isFinite(n)) return '-';
+  if (n === 0) return '$0';
+  if (n >= 1) return '$' + n.toFixed(2);
+  if (n >= 0.01) return '$' + n.toFixed(4);
+  return '$' + n.toFixed(6);
+}
+
+function moneyCell(value) {
+  if (value === null || value === undefined) return '<span title="немає тексту, ділити нема на що">-</span>';
+  return '<span title="' + value + ' USD">' + money(value) + '</span>';
+}
+
+async function load() {
+  if (!api.key) {
+    showNotice('Вставте ключ доступу у поле праворуч, щоб побачити витрати.', 'info');
+    return;
+  }
+  try {
+    const response = await fetch('/api/v1/stats', { headers: { 'X-API-Key': api.key } });
+    if (response.status === 401) {
+      showNotice('Ключ доступу не підійшов.', 'error');
+      return;
+    }
+    if (!response.ok) {
+      showNotice('Сервіс відповів помилкою ' + response.status + '.', 'error');
+      return;
+    }
+    notice.hidden = true;
+    render(await response.json());
+  } catch (e) {
+    showNotice('Не вдалося звернутися до сервісу: ' + e.message, 'error');
+  }
+}
+
+function render(data) {
+  const o = data.overall;
+  el('m-sessions').textContent = nf.format(o.sessions);
+  el('m-replies').textContent = nf.format(o.replies);
+  el('m-tokens').textContent = nf.format(o.total_tokens);
+  el('m-cached').textContent = 'з кешу ' + nf.format(o.cached_tokens);
+  el('m-cost').textContent = money(o.total_cost);
+  el('m-cost').title = o.total_cost + ' USD';
+
+  renderFailed(data.failed, o);
+  renderModels(data.by_model);
+  renderChart(data.by_day);
+}
+
+function renderFailed(failed, overall) {
+  const box = el('failed-callout');
+  if (!failed.replies) { box.hidden = true; return; }
+  const share = Number(overall.total_cost) > 0
+    ? Math.round((Number(failed.total_cost) / Number(overall.total_cost)) * 100)
+    : 0;
+  box.textContent =
+    'Порожніх відповідей: ' + failed.replies + '. Провайдер списав за них ' +
+    money(failed.total_cost) + ' - це ' + share + '% усіх витрат. ' +
+    'Модель витратила ліміт виводу на міркування і не встигла написати текст.';
+  box.hidden = false;
+}
+
+function renderModels(rows) {
+  const body = el('model-rows');
+  body.innerHTML = '';
+  el('models-empty').hidden = rows.length > 0;
+  if (!rows.length) return;
+
+  // Порівнюємо з найдешевшою моделлю за корисний текст: абсолютні числа тут
+  // надто дрібні, щоб різницю було видно оком.
+  const priced = rows.filter((r) => r.cost_per_1k_chars !== null).map((r) => Number(r.cost_per_1k_chars));
+  const cheapest = priced.length ? Math.min(...priced) : null;
+  const dearest = priced.length ? Math.max(...priced) : null;
+
+  for (const row of rows) {
+    const per1k = row.cost_per_1k_chars === null ? null : Number(row.cost_per_1k_chars);
+    const tr = document.createElement('tr');
+
+    let ratio = '-';
+    if (per1k !== null && cheapest) {
+      const times = per1k / cheapest;
+      ratio = times < 1.05
+        ? '×1.0<span class="supporting-word"> найдешевша</span>'
+        : '×' + times.toFixed(1) + '<span class="supporting-word"> дорожче</span>';
+      if (per1k === dearest && times >= 1.05) tr.className = 'costly';
+      else if (times < 1.05) tr.className = 'cheapest';
+    }
+
+    tr.innerHTML =
+      '<td class="model-name">' + row.model + '</td>' +
+      '<td>' + nf.format(row.replies) + '</td>' +
+      '<td class="supporting">' + nf.format(row.avg_output_tokens) + '</td>' +
+      '<td class="supporting">' + moneyCell(row.avg_cost_per_reply) + '</td>' +
+      '<td class="supporting">' + moneyCell(row.total_cost) + '</td>' +
+      '<td>' + moneyCell(row.cost_per_1k_chars) + '</td>' +
+      '<td class="ratio">' + ratio + '</td>';
+    body.appendChild(tr);
+  }
+}
+
+function renderChart(days) {
+  const chart = el('chart');
+  chart.innerHTML = '';
+  el('chart-empty').hidden = days.length > 0;
+  chart.hidden = days.length === 0;
+  if (!days.length) return;
+
+  const max = Math.max(...days.map((d) => Number(d.total_cost)));
+  for (const day of days) {
+    const value = Number(day.total_cost);
+    const height = max > 0 ? Math.round((value / max) * 100) : 0;
+    const cell = document.createElement('div');
+    cell.className = 'day';
+    cell.title = day.day + ': ' + money(day.total_cost) + ' за ' + day.replies + ' відповідей';
+    cell.innerHTML =
+      '<div class="bar-fill" style="height:' + height + '%"></div>' +
+      '<div class="day-label">' + day.day.slice(5) + '</div>';
+    chart.appendChild(cell);
+  }
+}
+
+load();
+</script>
+</body>
+</html>

@@ -8,13 +8,14 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.deps import get_chat_service, require_api_key
+from app.api.deps import get_chat_service, get_stats_repo, require_api_key
 from app.core.config import get_settings
 from app.db.base import Base
 from app.main import app
 from app.models import chat as models  # noqa: F401 - registers tables on Base.metadata
 from app.providers.base import ProviderReply, ProviderUsage
 from app.repositories.chat_repo import ChatRepository
+from app.repositories.stats_repo import StatsRepository
 from app.services.chat import ChatService
 from app.services.pricing import get_pricing_service
 
@@ -85,7 +86,14 @@ async def client(tmp_path):
                 await db.rollback()
                 raise
 
+    async def override_stats_repo():
+        # Reporting is read-only, so it needs the same database but none of
+        # the write plumbing.
+        async with factory() as db:
+            yield StatsRepository(db)
+
     app.dependency_overrides[get_chat_service] = override_chat_service
+    app.dependency_overrides[get_stats_repo] = override_stats_repo
     # The guard is environment-driven (API_KEY). Overriding it keeps the suite
     # deterministic: these tests cover behaviour, and running them against a
     # deployment-shaped .env must not turn every request into a 401.

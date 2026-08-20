@@ -13,7 +13,8 @@ SDK behind an adapter.
 ## Live demo
 
 A running instance is available at **https://pbc.midmoon.duckdns.org/** - a chat
-UI at `/` and Swagger at `/docs`, no setup required.
+UI at `/`, a spending report at `/stats` and Swagger at `/docs`, no setup
+required.
 
 The demo is behind a shared key: send `X-API-Key: <key provided separately>`
 with every `/api/v1` call. The UI accepts the same key in its field, or as
@@ -107,6 +108,7 @@ All settings live in `.env` (see `.env.example`).
 | `POST` | `/api/v1/sessions/{id}/messages` | Send a message; returns the reply, usage and cost. Accepts an optional `model`. |
 | `GET` | `/api/v1/sessions/{id}/messages` | History of the active context only. |
 | `GET` | `/api/v1/models` | Models this service can price, with the tariffs in use. |
+| `GET` | `/api/v1/stats` | Spending report: totals, a breakdown per model, the daily curve. |
 | `GET` | `/health` | Liveness. |
 
 ### Example requests
@@ -321,6 +323,26 @@ request did not ask for one, and the data is there if it is ever needed.
   not modelled: the default model has no such charge.
 - Non-text modalities (audio, image, web-search tool calls) are out of scope.
 
+### The spending report
+
+`GET /api/v1/stats`, rendered at `/stats`, answers the question the raw totals
+cannot: which model delivers text most cheaply.
+
+A tariff is charged per token, but a reader consumes characters. A model that
+reasons at length before its first visible word spends output tokens on text
+nobody will ever see, so the report divides what each model cost by the number
+of characters it actually delivered. On this deployment that gap is large:
+`gpt-5-nano` lists at a third of `gpt-4o-mini`'s output rate yet costs several
+times more per thousand characters of answer.
+
+Replies that were billed but arrived empty get their own line rather than being
+averaged away, and archived generations are included - a reset clears the
+context, not the invoice.
+
+Nothing is precomputed. Every figure is aggregated on request from the same
+`message_usage` rows the chat endpoints write, so the report cannot drift away
+from the per-message accounting.
+
 ---
 
 ## How it works
@@ -363,12 +385,15 @@ app/
   providers/
     base.py             provider protocol
     openai_provider.py  SDK adapter, retries, error mapping
-  repositories/     database access
+  repositories/
+    chat_repo.py        database access for sessions and messages
+    stats_repo.py       read-only aggregates for the spending report
   models/           SQLAlchemy ORM
   core/             config and domain errors
 migrations/         Alembic
 static/index.html   demo chat UI
-tests/              18 tests, no network
+static/stats.html   spending report UI
+tests/              44 tests, no network
 ```
 
 ### Data model

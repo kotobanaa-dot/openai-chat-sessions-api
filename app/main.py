@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.routes import sessions
+from app.api.routes import sessions, stats
 from app.core.config import get_settings
 from app.core.errors import AppError
 
@@ -28,6 +28,7 @@ app = FastAPI(
 )
 
 app.include_router(sessions.router)
+app.include_router(stats.router)
 
 if not settings.auth_enabled and settings.app_env != "local":
     # Auth is off whenever API_KEY is empty, which is convenient locally and
@@ -96,3 +97,8 @@ async def health() -> dict[str, str]:
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/stats", include_in_schema=False)
+async def stats_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "stats.html")

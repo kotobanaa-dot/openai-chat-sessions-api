@@ -9,6 +9,7 @@ from app.core.errors import UnauthorizedError
 from app.db.session import get_db
 from app.providers.openai_provider import OpenAIProvider
 from app.repositories.chat_repo import ChatRepository
+from app.repositories.stats_repo import StatsRepository
 from app.services.chat import ChatService
 from app.services.pricing import PricingService, get_pricing_service
 
@@ -46,3 +47,12 @@ def get_chat_service(
 
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
+
+
+def get_stats_repo(db: DbDep) -> StatsRepository:
+    """Reporting reads straight from the repository: there is no decision to
+    make on the way, so a service layer would only forward calls."""
+    return StatsRepository(db)
+
+
+StatsRepoDep = Annotated[StatsRepository, Depends(get_stats_repo)]
