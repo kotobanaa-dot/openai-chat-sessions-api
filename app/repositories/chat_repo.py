@@ -46,13 +46,18 @@ class ChatRepository:
 
     # --- messages ---
 
-    async def list_messages(self, session_id: str) -> list[Message]:
-        stmt = (
-            select(Message)
-            .where(Message.session_id == session_id)
-            .order_by(Message.seq.asc())
-        )
-        return list(await self.db.scalars(stmt))
+    async def list_messages(
+        self, session_id: str, generation: int | None = None
+    ) -> list[Message]:
+        """Messages of one generation, or of the whole session when None.
+
+        Callers that build context or render history pass the session's current
+        generation, so messages archived by a reset stay out of the way.
+        """
+        stmt = select(Message).where(Message.session_id == session_id)
+        if generation is not None:
+            stmt = stmt.where(Message.generation == generation)
+        return list(await self.db.scalars(stmt.order_by(Message.seq.asc())))
 
     async def next_seq(self, session_id: str) -> int:
         stmt = select(func.coalesce(func.max(Message.seq), 0)).where(
@@ -60,8 +65,10 @@ class ChatRepository:
         )
         return int(await self.db.scalar(stmt) or 0) + 1
 
-    async def count_messages(self, session_id: str) -> int:
+    async def count_messages(self, session_id: str, generation: int | None = None) -> int:
         stmt = select(func.count(Message.id)).where(Message.session_id == session_id)
+        if generation is not None:
+            stmt = stmt.where(Message.generation == generation)
         return int(await self.db.scalar(stmt) or 0)
 
     async def add_message(
@@ -70,6 +77,7 @@ class ChatRepository:
         seq: int,
         role: str,
         content: str,
+        generation: int = 1,
         model: str | None = None,
         status: str = "complete",
         finish_reason: str | None = None,
@@ -78,6 +86,7 @@ class ChatRepository:
         message = Message(
             session_id=session_id,
             seq=seq,
+            generation=generation,
             role=role,
             content=content,
             model=model,
@@ -113,8 +122,29 @@ class ChatRepository:
         total_tokens: int,
         cost: Decimal,
     ) -> None:
+        """Charge one exchange to both the active generation and the lifetime."""
         session.total_prompt_tokens += prompt_tokens
         session.total_completion_tokens += completion_tokens
         session.total_tokens += total_tokens
         session.total_cost = Decimal(session.total_cost) + cost
+
+        session.lifetime_prompt_tokens += prompt_tokens
+        session.lifetime_completion_tokens += completion_tokens
+        session.lifetime_tokens += total_tokens
+        session.lifetime_cost = Decimal(session.lifetime_cost) + cost
         await self.db.flush()
+
+    async def start_new_generation(self, session: ChatSession) -> ChatSession:
+        """Archive the current context by moving the session to a new generation.
+
+        Nothing is deleted: earlier messages keep their generation number and
+        their recorded cost. Only the active counters go back to zero, and the
+        lifetime ones are deliberately left alone.
+        """
+        session.generation += 1
+        session.total_prompt_tokens = 0
+        session.total_completion_tokens = 0
+        session.total_tokens = 0
+        session.total_cost = Decimal("0")
+        await self.db.flush()
+        return session

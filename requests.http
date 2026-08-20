@@ -47,6 +47,44 @@ X-API-Key: {{apiKey}}
 GET {{base}}/api/v1/sessions/{{sessionId}}
 X-API-Key: {{apiKey}}
 
+### 6a. Answer one message with a different model
+# The session default is unchanged; the cost uses this model's tariff.
+POST {{base}}/api/v1/sessions/{{sessionId}}/messages
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "content": "Same question, cheaper model.",
+  "model": "gpt-5-nano"
+}
+
+### 6b. Reset the session - same id, empty context, zero active cost
+POST {{base}}/api/v1/sessions/{{sessionId}}/reset
+X-API-Key: {{apiKey}}
+
+### 6c. After the reset the model no longer knows the earlier context
+POST {{base}}/api/v1/sessions/{{sessionId}}/messages
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "content": "What is my name?"
+}
+
+### 6d. History is empty, but lifetime_cost still shows what was spent
+GET {{base}}/api/v1/sessions/{{sessionId}}
+X-API-Key: {{apiKey}}
+
+### 6e. Error case - unsupported model, rejected before any spending
+POST {{base}}/api/v1/sessions/{{sessionId}}/messages
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "content": "hi",
+  "model": "gpt-9-imaginary"
+}
+
 ### 7. Error case - unknown session
 GET {{base}}/api/v1/sessions/does-not-exist
 X-API-Key: {{apiKey}}

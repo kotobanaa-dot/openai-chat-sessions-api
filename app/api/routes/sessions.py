@@ -9,6 +9,7 @@ from app.schemas.chat import (
     MessageCreate,
     MessageOut,
     ModelOut,
+    ResetOut,
     SendMessageOut,
     SessionCreate,
     SessionDetailOut,
@@ -39,12 +40,31 @@ async def list_sessions(
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
 async def get_session(session_id: str, chat: ChatServiceDep) -> SessionDetailOut:
-    """Full history plus the accumulated cost of the session."""
+    """Active history plus the accumulated cost of the active context."""
     session = await chat.get_session_or_404(session_id)
-    messages = await chat.repo.list_messages(session_id)
+    messages = await chat.repo.list_messages(session_id, generation=session.generation)
     return SessionDetailOut(
         **SessionOut.model_validate(session).model_dump(),
         messages=[MessageOut.model_validate(m) for m in messages],
+    )
+
+
+@router.post("/sessions/{session_id}/reset", response_model=ResetOut)
+async def reset_session(session_id: str, chat: ChatServiceDep) -> ResetOut:
+    """Start a fresh context in the same session.
+
+    The session id does not change. Previous messages are archived under their
+    generation rather than deleted, so the spending they caused stays on record
+    while the active context starts empty and at zero cost.
+    """
+    result = await chat.reset_session(session_id)
+    session = result.session
+    return ResetOut(
+        session_id=session.id,
+        generation=session.generation,
+        messages_archived=result.messages_archived,
+        total_cost=session.total_cost,
+        lifetime_cost=session.lifetime_cost,
     )
 
 
@@ -56,11 +76,13 @@ async def get_session(session_id: str, chat: ChatServiceDep) -> SessionDetailOut
 async def send_message(
     session_id: str, payload: MessageCreate, chat: ChatServiceDep
 ) -> SendMessageOut:
-    result = await chat.send_message(session_id, payload.content)
+    result = await chat.send_message(session_id, payload.content, model=payload.model)
     return SendMessageOut(
         session_id=session_id,
         user_message=MessageOut.model_validate(result.user_message),
         assistant_message=MessageOut.model_validate(result.assistant_message),
+        model=result.model,
+        generation=result.generation,
         usage=UsageOut(
             prompt_tokens=result.prompt_tokens,
             completion_tokens=result.completion_tokens,
@@ -76,8 +98,9 @@ async def send_message(
 
 @router.get("/sessions/{session_id}/messages", response_model=list[MessageOut])
 async def list_messages(session_id: str, chat: ChatServiceDep) -> list[MessageOut]:
-    await chat.get_session_or_404(session_id)
-    messages = await chat.repo.list_messages(session_id)
+    """History of the active context only, consistent with GET /sessions/{id}."""
+    session = await chat.get_session_or_404(session_id)
+    messages = await chat.repo.list_messages(session_id, generation=session.generation)
     return [MessageOut.model_validate(m) for m in messages]
 
 

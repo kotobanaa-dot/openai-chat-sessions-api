@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class ResetResult:
+    session: ChatSession
+    messages_archived: int
+
+
+@dataclass
 class ExchangeResult:
     session: ChatSession
     user_message: Message
@@ -33,6 +39,10 @@ class ExchangeResult:
     session_total_cost: Decimal
     context_messages: int
     unpriced_usage: dict[str, int] | None
+    # The model this exchange was actually priced by - it may differ from the
+    # session default when the caller overrode it.
+    model: str
+    generation: int
 
 
 class ChatService:
@@ -80,7 +90,25 @@ class ChatService:
             raise SessionNotFoundError(details={"session_id": session_id})
         return session
 
-    async def send_message(self, session_id: str, content: str) -> ExchangeResult:
+    async def reset_session(self, session_id: str) -> ResetResult:
+        """Clear the active context while keeping the same session id.
+
+        Earlier messages are archived under their generation rather than
+        deleted - see ChatRepository.start_new_generation.
+        """
+        session = await self.get_session_or_404(session_id, for_update=True)
+        archived = await self.repo.count_messages(session_id, generation=session.generation)
+
+        # Resetting an untouched context would only create an empty generation.
+        if archived == 0:
+            return ResetResult(session=session, messages_archived=0)
+
+        session = await self.repo.start_new_generation(session)
+        return ResetResult(session=session, messages_archived=archived)
+
+    async def send_message(
+        self, session_id: str, content: str, model: str | None = None
+    ) -> ExchangeResult:
         text = content.strip()
         if not text:
             raise ValidationError("Message content must not be empty.")
@@ -92,12 +120,28 @@ class ChatService:
 
         session = await self.get_session_or_404(session_id, for_update=True)
 
-        if await self.repo.count_messages(session_id) >= self.settings.max_messages_per_session:
+        # Per-message model overrides the session default. Rejected here, before
+        # anything is spent, if there is no tariff for it.
+        chosen_model = model or session.model
+        if model is not None:
+            try:
+                self.pricing.price_for(chosen_model)
+            except UnknownModelPricingError as exc:
+                raise ValidationError(
+                    f"Model '{chosen_model}' is not supported by this service.",
+                    details=exc.details,
+                ) from exc
+
+        generation = session.generation
+        if (
+            await self.repo.count_messages(session_id, generation=generation)
+            >= self.settings.max_messages_per_session
+        ):
             raise SessionLimitError(
                 details={"limit": self.settings.max_messages_per_session}
             )
 
-        history = await self.repo.list_messages(session_id)
+        history = await self.repo.list_messages(session_id, generation=generation)
 
         # Persist the user's message before calling the provider, and commit it:
         # without the commit, a provider failure would roll the request back and
@@ -107,16 +151,21 @@ class ChatService:
         # whole session behind one slow request.
         seq = await self.repo.next_seq(session_id)
         user_message = await self.repo.add_message(
-            session_id=session_id, seq=seq, role="user", content=text
+            session_id=session_id,
+            seq=seq,
+            generation=generation,
+            role="user",
+            content=text,
         )
         await self.repo.commit()
 
         context = self.context_builder.build(session, history, text)
-        reply = await self.provider.complete(context, model=session.model)
+        reply = await self.provider.complete(context, model=chosen_model)
 
         usage = reply.usage
+        # Priced by the model actually used, not by the session default.
         cost = self.pricing.calculate(
-            model=session.model,
+            model=chosen_model,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
             cached_tokens=usage.cached_tokens,
@@ -125,6 +174,7 @@ class ChatService:
         assistant_message = await self.repo.add_message(
             session_id=session_id,
             seq=seq + 1,
+            generation=generation,
             role="assistant",
             content=reply.content,
             model=reply.model,
@@ -134,7 +184,7 @@ class ChatService:
 
         await self.repo.add_usage(
             message_id=assistant_message.id,
-            model=session.model,
+            model=chosen_model,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
             cached_tokens=usage.cached_tokens,
@@ -167,4 +217,6 @@ class ChatService:
             session_total_cost=Decimal(session.total_cost),
             context_messages=len(context),
             unpriced_usage=usage.extra,
+            model=chosen_model,
+            generation=generation,
         )

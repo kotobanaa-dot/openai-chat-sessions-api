@@ -71,6 +71,27 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Друга величина в картці: те, що reset не обнуляє, і номер покоління. */
+  .metric .sub {
+    margin-top: 4px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  select.secondary {
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
   .panel {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -232,8 +253,12 @@
   <div class="notice" id="notice"></div>
 
   <div class="bar">
-    <div style="display:flex; gap:8px; align-items:center;">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
       <button class="secondary" id="new-session">Нова сесія</button>
+      <button class="secondary" id="reset-session" title="Очистити контекст, ID сесії лишається той самий">Скинути контекст</button>
+      <select class="secondary" id="model-select" title="Модель для наступного повідомлення">
+        <option value="">Модель сесії</option>
+      </select>
       <a class="secondary" href="/docs" style="text-decoration:none;">
         <button class="secondary" type="button">Документація API</button>
       </a>
@@ -247,12 +272,14 @@
       <div class="value" id="m-tokens">0</div>
     </div>
     <div class="metric">
-      <div class="label">Накопичена вартість</div>
+      <div class="label">Вартість контексту</div>
       <div class="value" id="m-cost">$0.00000000</div>
+      <div class="sub" id="m-lifetime">за весь час $0.00000000</div>
     </div>
     <div class="metric">
       <div class="label">Повідомлень</div>
       <div class="value" id="m-messages">0</div>
+      <div class="sub" id="m-generation">покоління 1</div>
     </div>
   </div>
 
@@ -371,9 +398,26 @@ function money(v) {
 function renderMetrics(session) {
   el('m-tokens').textContent = session.total_tokens ?? 0;
   el('m-cost').textContent = money(session.total_cost ?? 0);
+  el('m-lifetime').textContent = 'за весь час ' + money(session.lifetime_cost ?? 0);
   el('m-messages').textContent = (session.messages || []).length;
+  el('m-generation').textContent = 'покоління ' + (session.generation ?? 1);
   el('session-id').textContent = session.id ? session.id.slice(0, 8) + '…' : '-';
   el('model').textContent = session.model || '-';
+}
+
+async function loadModels() {
+  try {
+    const models = await request('/api/v1/models');
+    const select = el('model-select');
+    for (const m of models) {
+      const option = document.createElement('option');
+      option.value = m.model;
+      option.textContent = m.model;
+      select.appendChild(option);
+    }
+  } catch (e) {
+    // Список моделей - зручність, а не умова роботи: помилку тут показувати нічого.
+  }
 }
 
 function messageNode(role, content, usageLine) {
@@ -451,14 +495,21 @@ async function send() {
   thread.appendChild(pending);
   thread.scrollTop = thread.scrollHeight;
 
+  const chosenModel = el('model-select').value;
+
   try {
     const result = await request(`/api/v1/sessions/${api.sessionId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ content: text }),
+      body: JSON.stringify(
+        chosenModel ? { content: text, model: chosenModel } : { content: text }
+      ),
     });
     usageByMessage[result.assistant_message.id] =
-      `вхід ${result.usage.prompt_tokens} · вихід ${result.usage.completion_tokens}` +
+      `${result.model} · вхід ${result.usage.prompt_tokens} · вихід ${result.usage.completion_tokens}` +
       (result.usage.cached_tokens ? ` · кеш ${result.usage.cached_tokens}` : '') +
+      (result.unpriced_usage && result.unpriced_usage.reasoning_tokens
+        ? ` · роздуми ${result.unpriced_usage.reasoning_tokens}`
+        : '') +
       ` · ${money(result.cost)} · контекст ${result.context_messages} повідом.`;
     await loadSession();
   } catch (e) {
@@ -470,7 +521,30 @@ async function send() {
   }
 }
 
+async function resetSession() {
+  if (!api.sessionId) return;
+  const button = el('reset-session');
+  button.disabled = true;
+  try {
+    const result = await request(`/api/v1/sessions/${api.sessionId}/reset`, { method: 'POST' });
+    for (const k of Object.keys(usageByMessage)) delete usageByMessage[k];
+    await loadSession();
+    // Попередні повідомлення не зникли з бази - вони перейшли в архів
+    // попереднього покоління, і витрачені гроші лишаються в обліку.
+    notice.className = 'notice show info';
+    notice.innerHTML =
+      `Контекст очищено. ID сесії той самий, покоління ${result.generation}, ` +
+      `архівовано повідомлень: ${result.messages_archived}. ` +
+      `Витрати за весь час збережено: ${money(result.lifetime_cost)}.`;
+  } catch (e) {
+    showError(e.message, e.code);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 el('send').addEventListener('click', send);
+el('reset-session').addEventListener('click', resetSession);
 el('new-session').addEventListener('click', () => {
   for (const k of Object.keys(usageByMessage)) delete usageByMessage[k];
   newSession();
@@ -479,6 +553,7 @@ el('input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
+loadModels();
 loadSession();
 </script>
 </body>

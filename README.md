@@ -72,7 +72,7 @@ uvicorn app.main:app --reload
 docker compose exec api pytest -q
 ```
 
-20 tests, none of which call OpenAI - the provider is faked, so the suite runs
+33 tests, none of which call OpenAI - the provider is faked, so the suite runs
 offline and for free.
 
 ---
@@ -101,9 +101,10 @@ All settings live in `.env` (see `.env.example`).
 |---|---|---|
 | `POST` | `/api/v1/sessions` | Create a session. |
 | `GET` | `/api/v1/sessions` | List sessions (paginated). |
-| `GET` | `/api/v1/sessions/{id}` | Session, full history and accumulated cost. |
-| `POST` | `/api/v1/sessions/{id}/messages` | Send a message; returns the reply, usage and cost. |
-| `GET` | `/api/v1/sessions/{id}/messages` | History only. |
+| `GET` | `/api/v1/sessions/{id}` | Session, active history and its accumulated cost. |
+| `POST` | `/api/v1/sessions/{id}/reset` | Start a fresh context, keeping the same session id. |
+| `POST` | `/api/v1/sessions/{id}/messages` | Send a message; returns the reply, usage and cost. Accepts an optional `model`. |
+| `GET` | `/api/v1/sessions/{id}/messages` | History of the active context only. |
 | `GET` | `/api/v1/models` | Models this service can price, with the tariffs in use. |
 | `GET` | `/health` | Liveness. |
 
@@ -168,11 +169,39 @@ curl -X POST http://localhost:8000/api/v1/sessions/$SID/messages \
 `context_messages` is deliberate: it shows how much history was actually sent,
 which is otherwise invisible from the outside.
 
-Get the session with its full history and accumulated cost:
+Get the session with its history and accumulated cost:
 
 ```bash
 curl http://localhost:8000/api/v1/sessions/$SID
 ```
+
+Answer a single message with a different model - the session default stays as it
+was, and the cost is charged at the tariff of the model that actually answered:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/sessions/$SID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Same question, cheaper model.", "model": "gpt-5-nano"}'
+```
+
+Reset the conversation and keep working in the same session:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/sessions/$SID/reset
+```
+
+```json
+{
+  "session_id": "a7b04d97-9ec5-4915-9ae9-a4da0312f17a",
+  "generation": 2,
+  "messages_archived": 4,
+  "total_cost": "0.00000000",
+  "lifetime_cost": "0.00002370"
+}
+```
+
+After the reset `GET /sessions/{id}` returns an empty history and a zero
+`total_cost`, while `lifetime_cost` still shows what the session has spent.
 
 A ready-to-run collection is in [`requests.http`](requests.http) (VS Code REST
 Client / JetBrains HTTP client) and [`postman_collection.json`](postman_collection.json).
@@ -218,6 +247,48 @@ Two details worth calling out:
 
 Each row in `message_usage` also keeps a **snapshot of the rates** used at the
 time of the call, so changing `pricing.yaml` later never rewrites historical cost.
+
+### Choosing a model per message
+
+A session has a default model, and any single message can override it:
+
+```json
+{ "content": "Same question, cheaper model.", "model": "gpt-5-nano" }
+```
+
+The cost is charged at the tariff of the model that actually answered, and the
+response echoes it back as `model`. Overriding does not change the session
+default. A model with no tariff is rejected with 422 **before** the provider is
+called, so an unsupported name costs nothing.
+
+One thing worth knowing when comparing models: a cheaper per-token tariff does
+not guarantee a cheaper answer. Reasoning models spend `reasoning_tokens`, which
+OpenAI bills as output. In a like-for-like test, `gpt-5-nano` answered "Say OK."
+with 203 completion tokens - 192 of them reasoning - and ended up costing about
+twenty times more than `gpt-4o-mini`, which used 2. Those tokens are reported in
+`unpriced_usage` so the difference is visible rather than mysterious.
+
+### Resetting a session
+
+`POST /sessions/{id}/reset` clears the conversation while keeping the session id.
+After it, the history is empty, `total_cost` is zero, and the model gets a clean
+context on the next message.
+
+**Previous messages are archived, not deleted.** Each session carries a
+`generation` counter; a reset increments it, and messages keep the generation
+they were written in. Everything outside the current generation is invisible to
+the API and to the model, but still present in the database.
+
+The reason is accounting: the money was really spent, and deleting the record
+of it would defeat the purpose of a service built to track cost. So a session
+keeps two sets of counters - `total_*` for the active context, which a reset
+zeroes, and `lifetime_*` for everything ever spent, which it never touches.
+Physical deletion would look identical from outside while destroying the
+spending history for good.
+
+Resetting an already-empty context does nothing, so repeated calls do not pile
+up empty generations. Reading archived generations has no endpoint: the change
+request did not ask for one, and the data is there if it is ever needed.
 
 ### Usage categories that are not priced separately
 
@@ -281,7 +352,7 @@ tests/              18 tests, no network
 
 ### Data model
 
-- `sessions` - model, optional system prompt, running totals
+- `sessions` - model, optional system prompt, `generation`, running totals
   (`total_prompt_tokens`, `total_completion_tokens`, `total_tokens`, `total_cost`).
 - `messages` - `session_id`, `seq`, `role`, `content`, plus provider trace
   (`finish_reason`, `provider_response_id`). Unique on `(session_id, seq)`.
@@ -341,4 +412,7 @@ Deliberate scope decisions, not oversights:
    no retry endpoint. The unanswered message simply becomes part of the context
    on the next attempt.
 6. **No rate limiting per IP** and no idempotency key on message sends.
-7. **Cost is USD only,** with no currency conversion.
+7. **Archived generations have no endpoint.** A reset keeps previous messages in
+   the database under their generation number, but nothing exposes them: the
+   change request did not ask for it. Adding it later is one query parameter.
+8. **Cost is USD only,** with no currency conversion.

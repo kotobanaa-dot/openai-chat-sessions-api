@@ -46,13 +46,24 @@ class ChatSession(Base):
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
 
-    # Running totals, kept in the same transaction as the message that changed
-    # them. Without these, showing a session's cost means summing its whole
-    # history on every read.
+    # Reset starts a new generation instead of deleting anything. Messages from
+    # earlier generations stay in the table but are no longer part of the
+    # active conversation.
+    generation: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # Totals of the ACTIVE generation - reset puts them back to zero, which is
+    # what a caller sees after resetting the session.
     total_prompt_tokens: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     total_completion_tokens: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     total_tokens: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     total_cost: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
+
+    # Totals across every generation. Never reset: the money was really spent,
+    # and a service whose purpose is cost accounting must not lose that.
+    lifetime_prompt_tokens: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    lifetime_completion_tokens: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    lifetime_tokens: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    lifetime_cost: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -81,6 +92,9 @@ class Message(Base):
         String(36), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True
     )
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Which generation this message belongs to. seq keeps counting across
+    # resets, so the uniqueness rule above needs no change.
+    generation: Mapped[int] = mapped_column(Integer, default=1, nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
