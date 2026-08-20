@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chat Sessions API - демо</title>
+<!-- Inline icon: without it the browser requests /favicon.ico and logs a 404. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><path d='M8 12h16M8 17h11' stroke='white' stroke-width='2.5' stroke-linecap='round'/></svg>">
 <style>
   :root {
     --bg: #f7f8fa;
@@ -78,6 +80,22 @@
     font-size: 11.5px;
     color: var(--muted);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Посилання, що виглядає як кнопка - button всередині <a> є невалідною
+     розміткою, хоч браузер її й терпить. */
+  .button-link {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
   }
 
   select.secondary {
@@ -259,9 +277,7 @@
       <select class="secondary" id="model-select" title="Модель для наступного повідомлення">
         <option value="">Модель сесії</option>
       </select>
-      <a class="secondary" href="/docs" style="text-decoration:none;">
-        <button class="secondary" type="button">Документація API</button>
-      </a>
+      <a class="button-link" href="/docs">Документація API</a>
     </div>
     <input id="api-key" type="password" placeholder="X-API-Key - ключ доступу" autocomplete="off">
   </div>
