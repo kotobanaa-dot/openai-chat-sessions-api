@@ -29,10 +29,19 @@ class ProviderReply:
     finish_reason: str | None = None
     response_id: str | None = None
 
+    @property
+    def is_empty(self) -> bool:
+        """No visible text came back, even though tokens were billed.
+
+        Happens when a reasoning model spends the whole output budget thinking.
+        """
+        return not self.content.strip()
+
 
 class LLMProvider(Protocol):
     async def complete(
         self,
         messages: list[ChatMessage],
         model: str,
+        max_output_tokens: int,
     ) -> ProviderReply: ...

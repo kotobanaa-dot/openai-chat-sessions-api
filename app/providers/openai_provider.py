@@ -37,12 +37,14 @@ class OpenAIProvider:
         )
         self._max_output_tokens = settings.openai_max_output_tokens
 
-    async def complete(self, messages: list[ChatMessage], model: str) -> ProviderReply:
+    async def complete(
+        self, messages: list[ChatMessage], model: str, max_output_tokens: int | None = None
+    ) -> ProviderReply:
         try:
             response = await self._client.chat.completions.create(
                 model=model,
                 messages=[m.as_dict() for m in messages],
-                max_completion_tokens=self._max_output_tokens,
+                max_completion_tokens=max_output_tokens or self._max_output_tokens,
             )
         except (RateLimitError, APITimeoutError, APIConnectionError) as exc:
             # Transient: retrying later can succeed.

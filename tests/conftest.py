@@ -28,9 +28,28 @@ class FakeProvider:
 
     def __init__(self) -> None:
         self.calls: list[list] = []
+        self.caps: list[int | None] = []
+        # Set to reproduce a reasoning model that used its whole budget
+        # thinking and returned no text.
+        self.return_empty = False
 
-    async def complete(self, messages, model):
+    async def complete(self, messages, model, max_output_tokens=None):
         self.calls.append(messages)
+        self.caps.append(max_output_tokens)
+        if self.return_empty:
+            return ProviderReply(
+                content="",
+                model=model,
+                finish_reason="length",
+                response_id="resp_fake",
+                usage=ProviderUsage(
+                    prompt_tokens=100,
+                    completion_tokens=400,
+                    total_tokens=500,
+                    cached_tokens=0,
+                    extra={"reasoning_tokens": 400},
+                ),
+            )
         return ProviderReply(
             content=f"reply to {len(messages)} context messages",
             model=model,

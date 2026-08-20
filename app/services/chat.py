@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from app.core.config import Settings
 from app.core.errors import (
+    EmptyReplyError,
     SessionLimitError,
     SessionNotFoundError,
     UnknownModelPricingError,
@@ -160,7 +161,15 @@ class ChatService:
         await self.repo.commit()
 
         context = self.context_builder.build(session, history, text)
-        reply = await self.provider.complete(context, model=chosen_model)
+        price = self.pricing.price_for(chosen_model)
+        reply = await self.provider.complete(
+            context,
+            model=chosen_model,
+            # Reasoning models need room to think before they can answer at all.
+            max_output_tokens=max(
+                self.settings.openai_max_output_tokens, price.min_output_tokens
+            ),
+        )
 
         usage = reply.usage
         # Priced by the model actually used, not by the session default.
@@ -178,6 +187,9 @@ class ChatService:
             role="assistant",
             content=reply.content,
             model=reply.model,
+            # An empty reply is not a usable turn: marking it failed keeps it
+            # out of the context sent on the next message.
+            status="failed" if reply.is_empty else "complete",
             finish_reason=reply.finish_reason,
             provider_response_id=reply.response_id,
         )
@@ -204,6 +216,28 @@ class ChatService:
             total_tokens=usage.total_tokens,
             cost=cost.total_cost,
         )
+
+        if reply.is_empty:
+            # The provider billed for this call, so the spending is committed
+            # before reporting the failure - the caller gets an error, but the
+            # money is not quietly lost from the accounting.
+            await self.repo.commit()
+            logger.warning(
+                "empty reply from %s: finish_reason=%s completion_tokens=%s reasoning=%s",
+                chosen_model,
+                reply.finish_reason,
+                usage.completion_tokens,
+                (usage.extra or {}).get("reasoning_tokens"),
+            )
+            raise EmptyReplyError(
+                details={
+                    "model": chosen_model,
+                    "finish_reason": reply.finish_reason,
+                    "completion_tokens": usage.completion_tokens,
+                    "reasoning_tokens": (usage.extra or {}).get("reasoning_tokens"),
+                    "charged": str(cost.total_cost),
+                }
+            )
 
         return ExchangeResult(
             session=session,

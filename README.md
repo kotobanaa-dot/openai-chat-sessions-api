@@ -26,8 +26,9 @@ is stored locally and stripped from the address bar on load. This trades some
 secrecy for convenience and suits a throwaway demo key with a spending cap - not
 a real credential.
 
-Replies on the demo are capped at 400 tokens and sessions at 30 messages, which
-keeps its spend bounded; a local run has no such caps.
+Replies on the demo are capped at 400 tokens - 2000 for reasoning models, which
+need the extra room to answer at all - and sessions at 30 messages, which keeps
+its spend bounded. A local run uses the defaults from `.env`.
 
 ---
 
@@ -72,7 +73,7 @@ uvicorn app.main:app --reload
 docker compose exec api pytest -q
 ```
 
-33 tests, none of which call OpenAI - the provider is faked, so the suite runs
+37 tests, none of which call OpenAI - the provider is faked, so the suite runs
 offline and for free.
 
 ---
@@ -85,7 +86,7 @@ All settings live in `.env` (see `.env.example`).
 |---|---|---|
 | `OPENAI_API_KEY` | - | Required. |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Default model for new sessions. |
-| `OPENAI_MAX_OUTPUT_TOKENS` | `512` | Hard cap per reply - a cost guard. |
+| `OPENAI_MAX_OUTPUT_TOKENS` | `512` | Cap per reply - a cost guard. Raised per model by `min_output_tokens` in `pricing.yaml`. |
 | `OPENAI_MAX_RETRIES` | `3` | Retries on 429/5xx, handled by the SDK. |
 | `DATABASE_URL` | compose value | Async SQLAlchemy URL. |
 | `CONTEXT_MAX_MESSAGES` | `20` | How many past messages go to the model. |
@@ -261,12 +262,32 @@ response echoes it back as `model`. Overriding does not change the session
 default. A model with no tariff is rejected with 422 **before** the provider is
 called, so an unsupported name costs nothing.
 
-One thing worth knowing when comparing models: a cheaper per-token tariff does
-not guarantee a cheaper answer. Reasoning models spend `reasoning_tokens`, which
-OpenAI bills as output. In a like-for-like test, `gpt-5-nano` answered "Say OK."
-with 203 completion tokens - 192 of them reasoning - and ended up costing about
-twenty times more than `gpt-4o-mini`, which used 2. Those tokens are reported in
-`unpriced_usage` so the difference is visible rather than mysterious.
+### Reasoning models need a larger output budget
+
+A cheaper per-token tariff does not make an answer cheaper. Reasoning models
+spend `reasoning_tokens` before writing a single visible character, and OpenAI
+bills them as output. On the same short question, `gpt-5-nano` used 1088
+reasoning tokens and cost about eleven times more than `gpt-4o-mini`, which used
+none. Those tokens are reported in `unpriced_usage`, so the difference is
+visible rather than mysterious.
+
+This also has a failure mode. With a tight output cap, a reasoning model can
+consume the entire budget thinking and return **no text at all** - while still
+being billed for it. Measured on a one-line question, `gpt-5-nano` needed
+anywhere between 256 and 1088 reasoning tokens, so a 400-token cap produced a
+blank answer roughly half the time.
+
+Two things follow, and the service does both:
+
+- The output cap is a property of the model. `pricing.yaml` carries an optional
+  `min_output_tokens`, and the per-reply cap becomes
+  `max(OPENAI_MAX_OUTPUT_TOKENS, min_output_tokens)`. Reasoning models get 2000;
+  ordinary models keep the configured default.
+- An empty reply is reported as an error (502 `empty_reply`) instead of being
+  stored as a blank turn - **but the spending is recorded first.** The provider
+  charged for that call, and a service built to account for cost must not lose
+  the record just because the answer was useless. The failed turn is marked
+  `status: failed`, which also keeps it out of the context sent next time.
 
 ### Resetting a session
 
@@ -372,6 +393,7 @@ Every failure returns the same shape:
 | Case | Status | Code |
 |---|---|---|
 | Unknown session | 404 | `session_not_found` |
+| Model returned no text within its output budget | 502 | `empty_reply` |
 | Empty / oversized / malformed input | 422 | `validation_error` |
 | Model not in `pricing.yaml` | 422 | `validation_error` |
 | Session message limit reached | 409 | `session_message_limit` |

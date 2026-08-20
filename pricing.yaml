@@ -27,12 +27,20 @@ models:
     cached_input: 0.025
     output: 0.40
 
+  # Reasoning models spend part of the output budget on internal reasoning
+  # before writing a single visible character. min_output_tokens raises the
+  # per-reply cap for them: with the default cap they regularly burn the whole
+  # budget on reasoning and return an empty answer that still costs money.
+  # Observed range for gpt-5-nano on a one-line question: 256-640 reasoning
+  # tokens, so 400 was a coin flip.
   gpt-5-mini:
     input: 0.25
     cached_input: 0.025
     output: 2.00
+    min_output_tokens: 2000
 
   gpt-5-nano:
     input: 0.05
     cached_input: 0.005
     output: 0.40
+    min_output_tokens: 2000

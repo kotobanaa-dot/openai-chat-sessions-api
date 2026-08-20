@@ -106,7 +106,7 @@ async def test_provider_failure_maps_to_503_and_keeps_the_user_message(
     """A failed model call must not swallow what the user typed."""
     sid = (await client.post("/api/v1/sessions", json={})).json()["id"]
 
-    async def failing_complete(messages, model):
+    async def failing_complete(messages, model, max_output_tokens=None):
         raise UpstreamUnavailableError()
 
     client.provider.complete = failing_complete

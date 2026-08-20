@@ -29,12 +29,16 @@ def to_money(value: Decimal) -> Decimal:
 
 @dataclass(frozen=True)
 class ModelPrice:
-    """Price of one model, USD per 1M tokens."""
+    """Price of one model, USD per 1M tokens, plus its output requirements."""
 
     model: str
     input: Decimal
     cached_input: Decimal
     output: Decimal
+    # Smallest per-reply output budget this model needs to be useful. Reasoning
+    # models consume part of it before producing any text, so the service-wide
+    # cap is raised to this value for them.
+    min_output_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,7 @@ class PricingService:
                 input=Decimal(str(entry["input"])),
                 cached_input=Decimal(str(entry.get("cached_input", entry["input"]))),
                 output=Decimal(str(entry["output"])),
+                min_output_tokens=int(entry.get("min_output_tokens", 0)),
             )
         return cls(prices, currency=raw.get("currency", "USD"))
 

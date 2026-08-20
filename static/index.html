@@ -244,6 +244,9 @@
 
   .thinking { color: var(--muted); font-style: italic; }
 
+  /* Невдала відповідь: текст є, але він службовий, а не від моделі. */
+  .content.failed { color: var(--danger); font-style: italic; }
+
   footer {
     margin-top: 18px;
     color: var(--muted);
@@ -436,12 +439,17 @@ async function loadModels() {
   }
 }
 
-function messageNode(role, content, usageLine) {
+function messageNode(role, content, usageLine, status) {
   const div = document.createElement('div');
   div.className = 'msg ' + role;
+  // Порожня відповідь - це не мовчання інтерфейсу, а витрачені гроші без
+  // тексту. Показуємо це явно, а не порожнім рядком.
+  const body = status === 'failed' && !content.trim()
+    ? '<div class="content failed">Модель не встигла відповісти в межах ліміту виводу.</div>'
+    : `<div class="content">${escapeHtml(content)}</div>`;
   div.innerHTML =
     `<div class="role">${ROLE_LABEL[role] || role.toUpperCase()}</div>` +
-    `<div><div class="content">${escapeHtml(content)}</div>` +
+    `<div>${body}` +
     (usageLine ? `<div class="usage">${escapeHtml(usageLine)}</div>` : '') +
     `</div>`;
   return div;
@@ -454,7 +462,7 @@ function renderThread(messages, usageByMessage) {
     return;
   }
   for (const m of messages) {
-    thread.appendChild(messageNode(m.role, m.content, usageByMessage[m.id] || ''));
+    thread.appendChild(messageNode(m.role, m.content, usageByMessage[m.id] || '', m.status));
   }
   thread.scrollTop = thread.scrollHeight;
 }

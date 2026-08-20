@@ -73,6 +73,22 @@ class UpstreamRejectedError(AppError):
     message = "The model provider rejected the request."
 
 
+class EmptyReplyError(AppError):
+    """The model returned no text, usually after exhausting the output budget.
+
+    Reasoning models spend part of that budget before writing anything, so a
+    tight cap can consume all of it. The call is still billed, which is why the
+    usage behind this error is recorded rather than discarded.
+    """
+
+    status_code = 502
+    code = "empty_reply"
+    message = (
+        "The model produced no text within its output budget. "
+        "Try a shorter question or a different model."
+    )
+
+
 class UnauthorizedError(AppError):
     status_code = 401
     code = "unauthorized"

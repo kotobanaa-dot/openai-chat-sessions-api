@@ -53,6 +53,9 @@ class MessageOut(BaseModel):
     role: str
     content: str
     model: str | None
+    status: str = Field(
+        description="'complete', or 'failed' when the model returned no usable text."
+    )
     created_at: datetime
 
 
