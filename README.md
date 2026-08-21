@@ -74,7 +74,7 @@ uvicorn app.main:app --reload
 docker compose exec api pytest -q
 ```
 
-37 tests, none of which call OpenAI - the provider is faked, so the suite runs
+44 tests, none of which call OpenAI - the provider is faked, so the suite runs
 offline and for free.
 
 ---
@@ -110,6 +110,45 @@ All settings live in `.env` (see `.env.example`).
 | `GET` | `/api/v1/models` | Models this service can price, with the tariffs in use. |
 | `GET` | `/api/v1/stats` | Spending report: totals, a breakdown per model, the daily curve. |
 | `GET` | `/health` | Liveness. |
+
+### Checking it works
+
+Six calls that touch every part of the service. On a deployment that sets
+`API_KEY`, add `-H "X-API-Key: $KEY"` to each one.
+
+```bash
+BASE=http://localhost:8000
+
+# 1. service is up
+curl -s $BASE/health
+
+# 2. create a session, then copy the "id" from the response into SID
+curl -s -X POST $BASE/api/v1/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"smoke test"}'
+SID=paste-the-id-here
+
+# 3. send a message - returns the reply, the token usage and the cost
+curl -s -X POST $BASE/api/v1/sessions/$SID/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"Say hello in three words."}'
+
+# 4. the same session with its history and accumulated cost
+curl -s $BASE/api/v1/sessions/$SID
+
+# 5. clear the context, keeping the session id; total_cost goes back to zero
+curl -s -X POST $BASE/api/v1/sessions/$SID/reset
+
+# 6. spending across every session, broken down per model
+curl -s $BASE/api/v1/stats
+```
+
+Two more worth trying: `-d '{"content":"hi","model":"gpt-4.1-mini"}'` on step 3
+charges that model's tariff instead of the session's, and an unsupported model
+name is rejected with `422` before any request reaches OpenAI.
+
+Ready-made alternatives to curl: `requests.http` (VS Code REST Client),
+`postman_collection.json`, or the Swagger page at `/docs`.
 
 ### Example requests
 
@@ -453,11 +492,13 @@ Deliberate scope decisions, not oversights:
    every session route. Note also that an empty `API_KEY` disables the guard
    entirely - convenient locally, which is why the service logs a warning at
    startup when that happens outside a local environment.
-5. **A failed exchange leaves the user's message unanswered rather than marked.**
-   The message is committed before the provider call, so it survives a failure -
-   but there is no `failed` placeholder row for the reply that never arrived, and
-   no retry endpoint. The unanswered message simply becomes part of the context
-   on the next attempt.
+5. **A provider outage leaves the user's message unanswered rather than marked.**
+   The message is committed before the provider call, so it survives the failure -
+   but when the call itself never returns (timeout, 5xx), no placeholder row is
+   written for the reply that never arrived, and there is no retry endpoint. The
+   unanswered message simply becomes part of the context on the next attempt.
+   This is distinct from a reply that arrives empty: that one *is* recorded, with
+   `status: "failed"`, because it was billed.
 6. **No rate limiting per IP** and no idempotency key on message sends.
 7. **Archived generations have no endpoint.** A reset keeps previous messages in
    the database under their generation number, but nothing exposes them: the
